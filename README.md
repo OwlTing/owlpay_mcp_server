@@ -19,7 +19,7 @@ The OwlPay MCP Server provides documentation search capabilities. This server en
 
 ## Install
 
-For quick installation, use one of the one-click install buttons above. The remote MCP Server is hosted by OwlTing and provides the easiest method for getting up and running. If your MCP host does not support remote MCP servers, you can easily set up the local version using Docker.
+For quick installation, use one of the one-click install buttons below. The remote MCP Server is hosted by OwlTing and provides the easiest method for getting up and running. If your MCP host does not support remote MCP servers, you can easily set up the local version using Docker.
 
 
 Docker Setup (For Local MCP Server Only):
@@ -33,7 +33,7 @@ docker build -f Dockerfile.local_docker -t mcp/owlpay . --no-cache
 
 #### Click the button to install:
 
-[![Install in Cursor](https://img.shields.io/badge/Cursor-Install%20OwlPay%20-blue?logo=cursor&logoColor=white)](https://owlting.github.io/owlpay_mcp_server/install-cursor-mcp.html)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install%20OwlPay%20-blue?logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=owlpay&config=eyJ1cmwiOiJodHRwczovL293bHBheS1tY3Aub3dsdGluZy5jb20vbWNwLyJ9)
 
 #### Or install manually:
 
