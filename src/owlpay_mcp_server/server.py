@@ -1,15 +1,13 @@
 # owlpay_web_server.py
 import asyncio
-import contextlib
 from typing import Any, Annotated
 
 import requests
 from requests.adapters import HTTPAdapter
 from pydantic import BaseModel, Field
 
-from starlette.applications import Starlette
-from starlette.routing import Mount
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.shared.exceptions import McpError
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -52,7 +50,13 @@ def search_owlpay_documentation_func(query: str) -> str:
         )
 
 # =================== FastMCP for web server ===================
-mcp = FastMCP("OwlPay Search", stateless_http=True)
+mcp = FastMCP(
+    "OwlPay Search",
+    stateless_http=True,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    ),
+)
 
 @mcp.tool(description='Search Owlpay documentation. Any non-English input will be auto-translated to English before populating the query.')
 def search_owlpay_documentation(
@@ -126,16 +130,12 @@ async def serve_mcp() -> None:
     async with stdio_server() as (r, w):
         await server.run(r, w, options, raise_exceptions=True)
 
-# ---------- lifespan: 啟動 / 關閉 session_manager ---------------------------
-@contextlib.asynccontextmanager
-async def lifespan(app):
-    async with mcp.session_manager.run():   # ★ 必須啟動
-        yield                               #   結束時自動關閉
-
 # ---------- Starlette app：掛載在 /mcp --------------------------------------
-app = Starlette(lifespan=lifespan, routes=[
-    Mount("/", app=mcp.streamable_http_app()),
-])
+app = mcp.streamable_http_app()
+# 相容既有 /mcp/ 安裝網址：/mcp/ 與 /mcp 共用同一 endpoint（同一 session manager），避免 307 轉址
+_mcp_path = mcp.settings.streamable_http_path
+_mcp_endpoint = next(r.endpoint for r in app.routes if getattr(r, "path", None) == _mcp_path)
+app.add_route(_mcp_path + "/", _mcp_endpoint)
 
 def main():
     """Run the Owlpay MCP web server."""
