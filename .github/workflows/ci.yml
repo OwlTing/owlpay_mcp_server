@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CLI_NAME: owlpay-mcp-server
+  TOOL_NAME: search_owlpay_documentation
+  SMOKE_PORT: "8765"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+
+      # Python version comes from .python-version
+      - name: Install Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Show Python version
+        run: uv run python --version
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Audit dependencies
+        run: |
+          req="${RUNNER_TEMP:-$(mktemp -d)}/requirements.txt"
+          uv export --frozen --no-hashes --no-emit-project > "$req"
+          uvx pip-audit -r "$req" --no-deps
+
+      - name: Smoke test (initialize + tools/list)
+        run: |
+          tmp="${RUNNER_TEMP:-$(mktemp -d)}"
+          uv run --frozen "$CLI_NAME" --mode uvicorn --host 127.0.0.1 --port "$SMOKE_PORT" > "$tmp/server.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          url="http://127.0.0.1:${SMOKE_PORT}/mcp"
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -s -o /dev/null "$url"; then ready=1; break; fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then cat "$tmp/server.log"; exit 1; fi
+            sleep 1
+          done
+          [ "$ready" = "1" ] || { echo "server did not become ready"; cat "$tmp/server.log"; exit 1; }
+
+          mcp_post() {
+            curl -sS -o "$tmp/response.txt" -w '%{http_code}' -X POST "$url" \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/json, text/event-stream' \
+              -d "$1"
+          }
+
+          code=$(mcp_post '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"0"}}}')
+          echo "initialize -> HTTP $code"; cat "$tmp/response.txt"; echo
+          [ "$code" = "200" ] || { cat "$tmp/server.log"; exit 1; }
+          grep -q '"serverInfo"' "$tmp/response.txt"
+
+          code=$(mcp_post '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
+          echo "tools/list -> HTTP $code"; cat "$tmp/response.txt"; echo
+          [ "$code" = "200" ] || { cat "$tmp/server.log"; exit 1; }
+          grep -q "\"$TOOL_NAME\"" "$tmp/response.txt"
