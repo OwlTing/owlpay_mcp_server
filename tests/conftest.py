@@ -3,6 +3,7 @@
 import importlib
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -12,6 +13,7 @@ from urllib3.util.retry import Retry
 SERVER_MODULE = "owlpay_mcp_server.server"
 API_ATTR = "SEARCH_API"
 SEARCH_FUNC = "search_owlpay_documentation_func"
+TOOL_NAME = "search_owlpay_documentation"
 # -----------------------------------------------------------------------------
 
 UPSTREAM_BODY = "fake upstream documentation body"
@@ -42,8 +44,9 @@ def fast_retry(monkeypatch):
 
 
 class FakeUpstream:
-    def __init__(self, statuses):
+    def __init__(self, statuses, delay=0):
         self.statuses = list(statuses)
+        self.delay = delay
         self.requests = []
         upstream = self
 
@@ -52,6 +55,7 @@ class FakeUpstream:
                 upstream.requests.append(self.path)
                 idx = min(len(upstream.requests), len(upstream.statuses)) - 1
                 status = upstream.statuses[idx]
+                time.sleep(upstream.delay)
                 body = (UPSTREAM_BODY if status == 200 else "upstream error").encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -74,11 +78,11 @@ class FakeUpstream:
 
 @pytest.fixture
 def upstream(monkeypatch, server):
-    """Factory: upstream([503, 503, 200]) starts a fake server and points the API at it."""
+    """Factory: upstream([503, 503, 200], delay=0) starts a fake server and points the API at it."""
     started = []
 
-    def _start(statuses):
-        fake = FakeUpstream(statuses)
+    def _start(statuses, delay=0):
+        fake = FakeUpstream(statuses, delay)
         started.append(fake)
         monkeypatch.setattr(server, API_ATTR, fake.url)
         return fake
